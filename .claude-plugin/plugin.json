@@ -1,0 +1,55 @@
+{
+	"name": "adhd",
+	"description": "An ADHD focus timer and check-in engine. Anchors a session to one task, measures reply latency, reply length and check accuracy, and hands Claude a check-in when the clock or the signals say it is time for a break.",
+	"version": "0.1.0",
+	"author": {
+		"name": "AfraIsNotAvailable"
+	},
+	"keywords": ["adhd", "focus", "timer", "pomodoro", "learning", "accessibility"],
+	"hooks": {
+		"SessionStart": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "\"${CLAUDE_PLUGIN_ROOT}/bin/adhd\" hook session-start",
+						"timeout": 5
+					}
+				]
+			}
+		],
+		"UserPromptSubmit": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "\"${CLAUDE_PLUGIN_ROOT}/bin/adhd\" hook prompt-submit",
+						"timeout": 5
+					}
+				]
+			}
+		],
+		"Stop": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "\"${CLAUDE_PLUGIN_ROOT}/bin/adhd\" hook stop",
+						"timeout": 5
+					}
+				]
+			}
+		],
+		"SessionEnd": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "\"${CLAUDE_PLUGIN_ROOT}/bin/adhd\" hook session-end",
+						"timeout": 5
+					}
+				]
+			}
+		]
+	}
+}

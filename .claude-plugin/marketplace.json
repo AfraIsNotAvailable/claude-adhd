@@ -1,0 +1,16 @@
+{
+	"$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+	"name": "claude-adhd",
+	"description": "An ADHD focus timer and check-in engine for Claude Code.",
+	"owner": {
+		"name": "AfraIsNotAvailable"
+	},
+	"plugins": [
+		{
+			"name": "adhd",
+			"description": "Focus blocks, measured fatigue, and a check-in Claude raises when it is time to stop.",
+			"source": "./",
+			"category": "productivity"
+		}
+	]
+}

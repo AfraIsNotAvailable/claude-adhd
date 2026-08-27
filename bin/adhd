@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Launcher. Finds a node, runs the engine, and never fails loudly.
+#
+# Hooks inherit whatever environment the terminal had, which on a machine using
+# a version manager may or may not include node on PATH. A hook that dies
+# because it could not find an interpreter would print an error into somebody's
+# session every single turn, so a missing node is treated as "this plugin is
+# not available today" and exits quietly.
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
+find_node() {
+	if [ -n "${ADHD_NODE:-}" ] && [ -x "${ADHD_NODE}" ]; then
+		printf '%s' "${ADHD_NODE}"
+		return 0
+	fi
+	if command -v node >/dev/null 2>&1; then
+		command -v node
+		return 0
+	fi
+	local candidate
+	for candidate in \
+		"${HOME}/.local/share/mise/installs/node"/*/bin/node \
+		"${HOME}/.nvm/versions/node"/*/bin/node \
+		"${HOME}/.volta/bin/node" \
+		"${HOME}/.asdf/installs/nodejs"/*/bin/node \
+		/usr/local/bin/node \
+		/usr/bin/node; do
+		if [ -x "${candidate}" ]; then
+			printf '%s' "${candidate}"
+			return 0
+		fi
+	done
+	return 1
+}
+
+NODE_BIN="$(find_node || true)"
+
+if [ -z "${NODE_BIN}" ]; then
+	# Verbs may complain; hooks and the status line must stay silent.
+	case "${1:-}" in
+		hook | statusline) exit 0 ;;
+		*)
+			echo "adhd: no node interpreter found. Install Node 20+ or set ADHD_NODE=/path/to/node." >&2
+			exit 1
+			;;
+	esac
+fi
+
+exec "${NODE_BIN}" "${ROOT}/adhd.mjs" "$@"

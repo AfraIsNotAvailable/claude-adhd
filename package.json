@@ -1,0 +1,23 @@
+{
+	"name": "claude-adhd",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "An ADHD focus timer and check-in engine for Claude Code: focus blocks, measured fatigue, and a check-in Claude raises when it is time to stop",
+	"license": "MIT",
+	"author": "AfraIsNotAvailable",
+	"engines": {
+		"node": ">=20"
+	},
+	"bin": {
+		"claude-adhd": "./bin/adhd.mjs"
+	},
+	"scripts": {
+		"test": "node test/selftest.mjs",
+		"check": "node test/selftest.mjs",
+		"install-plugin": "bash scripts/install.sh",
+		"install-skill": "bash scripts/install.sh --skill",
+		"uninstall": "bash scripts/uninstall.sh"
+	},
+	"files": ["bin", "lib", "commands", "skills", "scripts", "install.sh", ".claude-plugin"]
+}
