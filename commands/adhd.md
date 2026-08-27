@@ -19,6 +19,10 @@ anything else is the name of the task and starts a new session anchored on it.
 
 With no arguments at all, run `status`.
 
+If that path does not exist, the session-start hook has not run yet — the plugin was installed
+during this session. Say so and tell them to restart Claude Code; do not go looking for the engine
+somewhere else.
+
 Show the user what it printed.
 
 **Step 2 — if a session just started or resumed, run the session.** Load the `adhd-session` skill and
