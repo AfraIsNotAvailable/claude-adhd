@@ -70,8 +70,32 @@ ADHD="${XDG_STATE_HOME:-$HOME/.local/state}/claude-adhd/adhd"
 | They answered a question you asked, right or wrong | `"$ADHD" check pass "what you asked about"` or `"$ADHD" check fail "…"` |
 | Something landed — a real click, not a nod | `"$ADHD" note "eigenvector as the direction the map does not turn"` |
 | They ask where they are | `"$ADHD" status` |
-| They take a break | `"$ADHD" break` — then `"$ADHD" resume` when they are back |
+| They take a break | `"$ADHD" break [minutes]` — then arm the timer, below |
 | They are finished | `"$ADHD" done` |
+| They want the next block without a break | `"$ADHD" resume` |
+
+### Breaks
+
+When they take a break, start it and then **arm the timer**: run `"$ADHD" await-break` with the
+Bash tool **in the background**. It blocks until the break is up and then exits, and you are
+re-invoked with what it printed. That is the only way the engine can speak first — hooks fire on
+events, and a break ending is not an event.
+
+Two things can come back:
+
+- `[adhd — break timer finished]` — the timer ran out and they have said nothing. Say the break is
+  over, name where they left off and the first concrete thing to do, ask if they are ready, then
+  **stop and wait**. Do not start teaching again on your own.
+- `They came back before the break ended. Do not ping them.` — say nothing. They are already back
+  and you have already greeted them.
+
+If it says the wait hit its limit, say nothing to the user and background another `await-break`.
+Long breaks are waited out in stages.
+
+**They do not need `/adhd resume`.** Any message during a break ends it and starts the next focus
+block; you will see `[adhd — back from a break]` when that happens. Greet them, name where they
+left off, ask if they want to pick it up. If they came back early it will say so — mention the time
+they have left in one clause and let it go. Do not talk them into resting longer.
 
 `check` is the third fatigue signal and the only one that does not exist unless you record it. A
 session where you never call it is a session running on two signals out of three. Record the
@@ -79,7 +103,7 @@ outcome of any question that has a right answer; skip it for open discussion.
 
 Do not announce these calls or paste their output. `note` and `check` are bookkeeping — run them
 quietly alongside your reply. `status`, `break`, `resume` and `done` produce something the user
-asked to see, so relay those.
+asked to see, so relay those. `await-break` is a background wait — never relay it, act on it.
 
 ## When a check-in arrives
 
@@ -127,6 +151,5 @@ they chose is not drift.
 
 ## Ending
 
-When they say stop, when the task is done, or when they take a break they do not come back from,
-call `"$ADHD" done` and read back what it prints. It is the honest record of a stretch of time
+When they say stop, or the task is done, call `"$ADHD" done` and read back what it prints. It is the honest record of a stretch of time
 that otherwise leaves no trace, which is the point.

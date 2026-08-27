@@ -19,8 +19,16 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { DEFAULTS, MIN } from "../lib/config.mjs";
-import { breakLengthFor, newBlock } from "../lib/blocks.mjs";
-import { decideCheckin, markCheckinRaised, renderCheckin, renderResume } from "../lib/checkin.mjs";
+import { formatDuration } from "../lib/blocks.mjs";
+import { breakLengthFor, newBlock, startNextBlock } from "../lib/blocks.mjs";
+import {
+	decideCheckin,
+	markCheckinRaised,
+	renderBackFromBreak,
+	renderBreakElapsed,
+	renderCheckin,
+	renderResume,
+} from "../lib/checkin.mjs";
 import { noteCheck, noteReply, noteTurnEnd, readFatigue, resetFatigue } from "../lib/fatigue.mjs";
 import { renderStatusline } from "../lib/statusline.mjs";
 import { newState } from "../lib/state.mjs";
@@ -165,38 +173,51 @@ function replies(state, n, { latencyMs, length, from }) {
 	const breakStart = now + 20 * MIN;
 	state.status = "break";
 	state.block.breakStartedAt = breakStart;
-	state.lastCheckinAt = breakStart;
-	check("no nudge while the break is running", decideCheckin(state, cfg, breakStart + 5 * MIN) === null);
-	const over = decideCheckin(state, cfg, breakStart + cfg.breakMin * MIN);
-	check("a nudge the moment the break runs out", over?.kind === "break-over");
-	const text = renderCheckin(state, over, cfg, breakStart + 20 * MIN);
-	check("the break-over nudge names where they left off", text.includes("where they left off"));
-	check("the break-over nudge does not restart the material", text.includes("Do not restart"));
+	check("a break is never interrupted by a check-in", decideCheckin(state, cfg, breakStart + 5 * MIN) === null);
+	check(
+		"nor is an overrun one",
+		decideCheckin(state, cfg, breakStart + 60 * MIN) === null,
+		"coming back is handled by resuming, not by nudging",
+	);
 }
 
-// ------------------------------------------------------- breaks shorter than the cooldown
+// ---------------------------------------------------------------- coming back
 
 {
-	// `/adhd break 2` sets lastCheckinAt, and the global check-in cooldown used
-	// to be applied before the break was even looked at — so a two-minute break
-	// went unanswered for eight. A break is gated by its own length.
 	const now = Date.now();
 	const state = session({ now });
-	state.block.breakMs = 2 * MIN;
+	replies(state, 3, { latencyMs: 5_000, length: 240, from: now + MIN });
+	replies(state, 3, { latencyMs: 40_000, length: 30, from: now + 10 * MIN });
 	state.status = "break";
-	state.block.breakStartedAt = now;
-	state.lastCheckinAt = now;
+	state.block.breakStartedAt = now + 20 * MIN;
+	state.block.breakMs = 10 * MIN;
 
-	check("a short break is not nudged early", decideCheckin(state, cfg, now + MIN) === null);
-	const over = decideCheckin(state, cfg, now + 2 * MIN);
-	check("a two-minute break is answered at two minutes", over?.kind === "break-over", "not after the eight-minute cooldown");
+	const back = now + 32 * MIN;
+	const before = state.block.index;
+	startNextBlock(state, cfg, back);
+	check("coming back starts the next block", state.block.index === before + 1);
+	check("coming back leaves the session in focus", state.status === "focus");
 
-	markCheckinRaised(state, "break-over", now + 2 * MIN);
-	check("it does not repeat on the next message", decideCheckin(state, cfg, now + 3 * MIN) === null);
-	check(
-		"it comes back on the repeat interval",
-		decideCheckin(state, cfg, now + (2 + cfg.breakOverRepeatMin) * MIN)?.kind === "break-over",
-	);
+	const late = renderBackFromBreak(state, { early: false, elapsed: 12 * MIN, breakMs: 10 * MIN }, cfg, back);
+	check("the greeting says the break is done", late.includes("break is done"), late);
+	check("the greeting names where they left off", late.includes("where they left off"), late);
+	check("the greeting does not restart the material", late.includes("Do not restart"), late);
+	check("the greeting carries the anchor", late.includes("learning eigenvalues"), late);
+
+	const early = renderBackFromBreak(state, { early: true, elapsed: 3 * MIN, breakMs: 10 * MIN }, cfg, back);
+	check("an early return is named as early", early.includes("7m early"), early);
+	check("an early return is not argued with", early.includes("do not talk them into resting"), early);
+
+	const ping = renderBreakElapsed(state, 2 * MIN);
+	check("the timer ping says it is the timer, not them", ping.includes("this is the timer, not them"), ping);
+	check("the timer ping stops and waits", ping.includes("stop and wait"), ping);
+}
+
+// ---------------------------------------------------------------- sub-minute honesty
+
+{
+	check("a forty-second return is not reported as zero", formatDuration(40_000) === "40s");
+	check("a minute is a minute", formatDuration(60_000) === "1m");
 }
 
 // ---------------------------------------------------------------- long breaks
@@ -312,6 +333,28 @@ function replies(state, n, { latencyMs, length, from }) {
 		const again = run(["hook", "prompt-submit"], JSON.stringify({ session_id: "cli-test", cwd: dir, prompt: "yes carry on" }));
 		check("the very next prompt is not nagged", again.trim() === "", again);
 
+		run(["done"]);
+	}
+
+	// The break loop, for real: a one-second break, a background-style wait that
+	// actually blocks, and a message that ends a break without any command.
+	{
+		run(["start", "the break loop"]);
+		run(["break", "0.02"]);
+		const waited = Date.now();
+		const ping = run(["await-break"]);
+		check("await-break blocks until the break is up", Date.now() - waited >= 1000, `${Date.now() - waited}ms`);
+		check("await-break reports the timer, not the user", ping.includes("[adhd — break timer finished]"), ping);
+
+		run(["break", "5"]);
+		const raw = run(["hook", "prompt-submit"], JSON.stringify({ session_id: "cli-test", cwd: dir, prompt: "back" }));
+		const injected = JSON.parse(raw).hookSpecificOutput.additionalContext;
+		check("a message during a break ends it", injected.includes("[adhd — back from a break]"), injected);
+		check("and is recognised as early", injected.includes("early"), injected);
+		check("the session is in focus again", run(["status"]).includes("Block "), "no /adhd resume was ever run");
+
+		const stale = run(["await-break"]);
+		check("a waiter for a break already returned from stays quiet", stale.includes("Do not ping them"), stale);
 		run(["done"]);
 	}
 

@@ -16,8 +16,15 @@
 
 import { readFileSync } from "node:fs";
 import { loadConfig, MIN } from "../lib/config.mjs";
-import { breakElapsed, focusElapsed, formatDuration, newBlock, sessionElapsed } from "../lib/blocks.mjs";
-import { decideCheckin, markCheckinRaised, renderCheckin, renderResume } from "../lib/checkin.mjs";
+import { breakElapsed, focusElapsed, formatDuration, newBlock, sessionElapsed, startNextBlock } from "../lib/blocks.mjs";
+import {
+	decideCheckin,
+	markCheckinRaised,
+	renderBackFromBreak,
+	renderBreakElapsed,
+	renderCheckin,
+	renderResume,
+} from "../lib/checkin.mjs";
 import { noteCheck, noteReply, noteTurnEnd, readFatigue, resetFatigue } from "../lib/fatigue.mjs";
 import { renderStatusline } from "../lib/statusline.mjs";
 import {
@@ -154,20 +161,27 @@ function hookPromptSubmit(event) {
 		return;
 	}
 
-	const revived = reviveIfStale(state);
-	if (!revived && state.status === "focus") {
-		noteReply(state, promptText(event), cfg);
-	} else {
-		state.lastActivityAt = Date.now();
-	}
-
-	const decision = decideCheckin(state, cfg);
+	const now = Date.now();
+	const revived = reviveIfStale(state, now);
 	let context = "";
+
 	if (revived) {
-		context = renderResume(state, cfg);
-	} else if (decision) {
-		markCheckinRaised(state, decision.kind);
-		context = renderCheckin(state, decision, cfg);
+		context = renderResume(state, cfg, now);
+	} else if (state.status === "break") {
+		// Talking is working. A message ends the break — whether the timer ran
+		// out or they came back early — so nobody has to remember `/adhd resume`.
+		const breakMs = state.block?.breakMs ?? 0;
+		const elapsed = breakElapsed(state, now);
+		startNextBlock(state, cfg, now);
+		resetFatigue(state);
+		context = renderBackFromBreak(state, { early: elapsed < breakMs, elapsed, breakMs }, cfg, now);
+	} else {
+		noteReply(state, promptText(event), cfg, now);
+		const decision = decideCheckin(state, cfg, now);
+		if (decision) {
+			markCheckinRaised(state, decision.kind, now);
+			context = renderCheckin(state, decision, cfg, now);
+		}
 	}
 
 	writeState(state);
@@ -305,7 +319,10 @@ function cmdBreak(args) {
 	state.lastCheckinAt = now;
 	state.lastActivityAt = now;
 	writeState(state);
-	out(`Break started: ${formatDuration(state.block.breakMs)}. \`/adhd resume\` when you are back.`);
+	out(
+		`Break started: ${formatDuration(state.block.breakMs)}. Just talk again when you are back — ` +
+			"the next block starts on your first message, no command needed.",
+	);
 }
 
 function cmdResume() {
@@ -315,16 +332,12 @@ function cmdResume() {
 		return;
 	}
 	const now = Date.now();
-	const index = (state.block?.index ?? 0) + 1;
-	state.status = "focus";
-	state.block = newBlock(index, cfg, now);
-	state.lastCheckinAt = now;
-	state.lastActivityAt = now;
+	const block = startNextBlock(state, cfg, now);
 	// A break is the whole point of the reading resetting: the latencies from
 	// before it describe a person who has since stopped and come back.
 	resetFatigue(state);
 	writeState(state);
-	out(`Focus block ${index} started: ${formatDuration(state.block.workMs)}, then ${formatDuration(state.block.breakMs)} off.`);
+	out(`Focus block ${block.index} started: ${formatDuration(block.workMs)}, then ${formatDuration(block.breakMs)} off.`);
 }
 
 function cmdCheck(args) {
@@ -449,12 +462,65 @@ function cmdStatusline() {
 	if (line) process.stdout.write(`${line}\n`);
 }
 
+
+/**
+ * Block until the break is over, so Claude can background this and be woken.
+ *
+ * This is the one place the engine speaks first, and the only mechanism that
+ * needed anything beyond the hooks: hooks fire on events, and a break ending
+ * is not an event — nobody types, nobody stops. Claude runs this with the Bash
+ * tool in the background and the harness re-invokes it when the process exits.
+ * No daemon, no scheduler, no notification service; the wait is a sleeping
+ * node process that the session owns.
+ *
+ * It re-reads the state each tick rather than sleeping once, so changing the
+ * break length or coming back early ends the wait instead of pinging someone
+ * who is already back.
+ */
+async function cmdAwaitBreak() {
+	const initial = loadOrCreate({ cwd: process.cwd() });
+	if (!initial || initial.status !== "break") {
+		out("Not on a break — nothing to wait for. Do not ping them.");
+		return;
+	}
+	const sessionId = initial.sessionId;
+	// The Bash tool caps a run at ten minutes, so a long break is waited out in
+	// stages: this exits early and asks to be re-armed rather than being killed
+	// halfway through and never reporting.
+	const CAP_MS = 9 * 60 * 1000;
+	const until = Date.now() + CAP_MS;
+
+	for (;;) {
+		const state = readState(sessionId);
+		if (!state || state.status !== "break") {
+			out("They came back before the break ended. Do not ping them.");
+			return;
+		}
+		const breakMs = state.block?.breakMs ?? 0;
+		const remaining = breakMs - breakElapsed(state, Date.now());
+		if (remaining <= 0) {
+			out(renderBreakElapsed(state, breakMs));
+			return;
+		}
+		const left = until - Date.now();
+		if (left <= 0) {
+			out(
+				`Still ${formatDuration(remaining)} of the break left, and this wait has hit its limit. ` +
+					"Say nothing to the user and start another background `await-break` to keep waiting.",
+			);
+			return;
+		}
+		await new Promise((resolve) => setTimeout(resolve, Math.max(500, Math.min(remaining, left, 5_000))));
+	}
+}
+
 const USAGE = `claude-adhd — an ADHD focus timer and check-in engine for Claude Code
 
   adhd start <task>      begin a focus session anchored on a task
   adhd status            elapsed time, block, fatigue reading
   adhd break [minutes]   start a break (defaults to the configured length)
   adhd resume            end the break, start the next focus block
+  adhd await-break       block until the break is over (run it in the background)
   adhd check pass|fail   record the outcome of a comprehension question
   adhd note <text>       log one line about what just landed
   adhd done              close the session and print what happened
@@ -500,6 +566,8 @@ function main() {
 			return cmdBreak(args);
 		case "resume":
 			return cmdResume();
+		case "await-break":
+			return cmdAwaitBreak();
 		case "check":
 			return cmdCheck(args);
 		case "note":
@@ -523,13 +591,18 @@ function main() {
 	}
 }
 
-try {
-	main();
-} catch (error) {
-	// A hook that throws is a hook that breaks somebody's session. The verbs
-	// are allowed to complain on stderr; hooks stay silent and exit 0.
+function fail(error) {
 	if (process.argv[2] !== "hook" && process.argv[2] !== "statusline") {
 		process.stderr.write(`adhd: ${error?.message ?? error}\n`);
 		process.exitCode = 1;
 	}
+}
+
+try {
+	const result = main();
+	if (result && typeof result.then === "function") result.catch(fail);
+} catch (error) {
+	// A hook that throws is a hook that breaks somebody's session. The verbs
+	// are allowed to complain on stderr; hooks stay silent and exit 0.
+	fail(error);
 }

@@ -124,8 +124,8 @@ No API key, no network, no daemon, no background process. The whole engine is `b
 ```
 /adhd <what you are working on>    start a session anchored on that task
 /adhd status                       elapsed, block, fatigue reading
-/adhd break [minutes]              take a break
-/adhd resume                       come back; the next block starts and the reading resets
+/adhd break [minutes]              take a break; Claude arms a timer and calls you back
+/adhd resume                       start the next block now, without a break
 /adhd done                         close it and print what actually happened
 /adhd off                          stop measuring for this session
 /adhd log [YYYY-MM-DD]             what you worked on, and for how long
@@ -171,6 +171,24 @@ anchor, new block, cleared window — because the latencies from before a night'
 declare exhaustion on your first question.
 
 Taking a break clears the reading, for the same reason.
+
+## Breaks
+
+`/adhd break 2` starts a two-minute break, and Claude backgrounds `adhd await-break` — a process
+that sleeps until the break is up and then exits, which is what wakes Claude to ask if you are
+ready. That is the only place the engine speaks first, and it is the only thing here that needed a
+mechanism beyond the hooks: hooks fire on events, and a break ending is not an event.
+
+No daemon, no scheduler, no notification service — the wait is a sleeping node process the session
+owns, and it dies with the session. Long breaks are waited out in stages, because the Bash tool
+caps a single run at ten minutes.
+
+**You never need `/adhd resume`.** Any message during a break ends it and starts the next focus
+block; Claude is told you are back, and whether you came back early. `resume` exists only for
+skipping a break you did not want.
+
+While a break runs, the status line shows `adhd break 1m/2m`, then `adhd break over +3m` if you
+wander off and the ping went unanswered.
 
 ## Configuration
 
