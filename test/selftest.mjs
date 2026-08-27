@@ -167,11 +167,36 @@ function replies(state, n, { latencyMs, length, from }) {
 	state.block.breakStartedAt = breakStart;
 	state.lastCheckinAt = breakStart;
 	check("no nudge while the break is running", decideCheckin(state, cfg, breakStart + 5 * MIN) === null);
-	const over = decideCheckin(state, cfg, breakStart + cfg.breakMin * MIN + cfg.checkinCooldownMin * MIN);
-	check("a nudge once the break has run out", over?.kind === "break-over");
+	const over = decideCheckin(state, cfg, breakStart + cfg.breakMin * MIN);
+	check("a nudge the moment the break runs out", over?.kind === "break-over");
 	const text = renderCheckin(state, over, cfg, breakStart + 20 * MIN);
 	check("the break-over nudge names where they left off", text.includes("where they left off"));
 	check("the break-over nudge does not restart the material", text.includes("Do not restart"));
+}
+
+// ------------------------------------------------------- breaks shorter than the cooldown
+
+{
+	// `/adhd break 2` sets lastCheckinAt, and the global check-in cooldown used
+	// to be applied before the break was even looked at — so a two-minute break
+	// went unanswered for eight. A break is gated by its own length.
+	const now = Date.now();
+	const state = session({ now });
+	state.block.breakMs = 2 * MIN;
+	state.status = "break";
+	state.block.breakStartedAt = now;
+	state.lastCheckinAt = now;
+
+	check("a short break is not nudged early", decideCheckin(state, cfg, now + MIN) === null);
+	const over = decideCheckin(state, cfg, now + 2 * MIN);
+	check("a two-minute break is answered at two minutes", over?.kind === "break-over", "not after the eight-minute cooldown");
+
+	markCheckinRaised(state, "break-over", now + 2 * MIN);
+	check("it does not repeat on the next message", decideCheckin(state, cfg, now + 3 * MIN) === null);
+	check(
+		"it comes back on the repeat interval",
+		decideCheckin(state, cfg, now + (2 + cfg.breakOverRepeatMin) * MIN)?.kind === "break-over",
+	);
 }
 
 // ---------------------------------------------------------------- long breaks
