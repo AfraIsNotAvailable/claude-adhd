@@ -7,7 +7,7 @@
 #   scripts/install.sh --statusline    wire the status line without asking
 #
 # Plugin mode registers this directory as a local marketplace and installs the
-# plugin from it, so the hooks, the `/adhd` command and the `adhd-session` skill all
+# plugin from it, so the hooks, the `/adhd` skill all
 # arrive together and `claude plugin uninstall` takes them all away again.
 #
 # Skill mode exists for people who do not want a marketplace entry: it symlinks
@@ -78,9 +78,9 @@ if [[ "${MODE}" == "plugin" ]]; then
 	say "installed: adhd@claude-adhd"
 else
 	step "Installing as a skill"
-	mkdir -p "${CLAUDE_DIR}/skills" "${CLAUDE_DIR}/commands"
+	mkdir -p "${CLAUDE_DIR}/skills"
 
-	for pair in "skills/adhd-session:${CLAUDE_DIR}/skills/adhd-session" "commands/adhd.md:${CLAUDE_DIR}/commands/adhd.md"; do
+	for pair in "skills/adhd:${CLAUDE_DIR}/skills/adhd"; do
 		src="${ROOT}/${pair%%:*}"
 		dest="${pair#*:}"
 		if [[ -e "${dest}" && ! -L "${dest}" ]]; then

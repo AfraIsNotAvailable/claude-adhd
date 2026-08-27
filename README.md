@@ -44,8 +44,8 @@ curl -fsSL https://raw.githubusercontent.com/AfraIsNotAvailable/claude-adhd/main
 ```
 
 Clones into `~/.local/share/claude-adhd`, runs the self-test, registers the checkout as a local
-marketplace, and installs the plugin from it — hooks, the `/adhd` command and the `adhd-session`
-skill together. Restart Claude Code afterwards.
+marketplace, and installs the plugin from it — hooks, the `/adhd` skill
+together. Restart Claude Code afterwards.
 
 Arguments pass through: `... | bash -s -- --skill --no-statusline`.
 
@@ -76,8 +76,7 @@ cd claude-adhd
 scripts/install.sh
 ```
 
-`scripts/install.sh --skill` instead symlinks `skills/adhd-session` and `commands/adhd.md` into
-`~/.claude/` and writes the four hooks into `~/.claude/settings.json` directly, for people who do
+`scripts/install.sh --skill` instead symlinks `skills/adhd` into `~/.claude/` and writes the four hooks into `~/.claude/settings.json` directly, for people who do
 not want a marketplace entry. It backs the file up first, only ever appends to hook arrays that
 already exist, and is idempotent.
 
@@ -136,12 +135,12 @@ No API key, no network, no daemon, no background process. The whole engine is `b
 It works best on something interactive — learning a concept, working through a chapter, thinking
 a design out loud — and it works best when Claude keeps asking you questions. That is not
 decoration: latency and reply length are two of the three signals, and a monologue produces
-neither. The `adhd-session` skill tells Claude to run the session that way, one idea per turn, ending
+neither. The `adhd` skill tells Claude to run the session that way, one idea per turn, ending
 every turn with a real question.
 
 ### What Claude does with it
 
-The `adhd-session` skill is the operating protocol. In short:
+The `adhd` skill is both the entry point and the operating protocol. In short:
 
 - one idea per turn, never three
 - a real question at the end of every turn — one you have to think about, not "make sense?"
@@ -228,8 +227,7 @@ lib/fatigue.mjs   the three signals
 lib/blocks.mjs    focus blocks and breaks
 lib/checkin.mjs   when to interrupt, and what to say
 lib/statusline.mjs the passive surface
-skills/adhd-session/  how Claude runs the session
-commands/adhd.md  the /adhd command
+skills/adhd/      the /adhd entry point and how Claude runs the session
 ```
 
 ## License

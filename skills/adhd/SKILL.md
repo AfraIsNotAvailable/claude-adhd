@@ -1,17 +1,44 @@
 ---
-name: adhd-session
-description: How to run a focus session for someone with ADHD — one thing per turn, a question at the end of every turn, and what to do when the timer hands you a check-in. Load when an ADHD focus session is running (the `/adhd` command started one, or a `[adhd check-in]` or `[adhd — session restored]` block appears in context), or when the user asks to work on something in focus blocks.
+name: adhd
+description: An ADHD focus timer and check-in engine — start or manage a focus session (/adhd <what you are working on>, or status/break/resume/done/off/log/config), and run the session once it is going. Use when the user invokes /adhd, when a `[adhd check-in]` or `[adhd — session restored]` block appears in context, or when they ask to work on something in focus blocks.
+argument-hint: <what you are working on> | status | break [min] | resume | done | off | log | config
+allowed-tools: Bash
 ---
 
 # Running an ADHD focus session
 
-The `/adhd` command starts a session anchored on one task. While it is running, hooks measure
+Invoking `/adhd <task>` starts a session anchored on one task. While it is running, hooks measure
 three things and hand you a reading when it matters: how long the reply took, how long the reply
 was, and whether comprehension checks that used to pass still pass.
 
 You cannot see any of that yourself. You have no clock, and a model asked to notice that someone
 is flagging will invent it. So the rule is: **do not narrate fatigue you were not told about, and
 do not ignore a reading you were.**
+
+## If you were invoked as `/adhd`
+
+Call the engine first. (If you loaded because a check-in appeared in context, skip this section —
+a session is already running.)
+
+The launcher is at a fixed path, written by the session-start hook:
+
+```
+${XDG_STATE_HOME:-$HOME/.local/state}/claude-adhd/adhd
+```
+
+Run it with the Bash tool as `<launcher> dispatch <arguments>`, passing whatever followed `/adhd`
+through as shell arguments — quote them properly, they are free text. `dispatch` sorts it out: a
+known verb (`status`, `break`, `resume`, `done`, `off`, `log`, `config`, `check`, `note`) runs that
+verb; anything else is the name of the task and starts a new session anchored on it.
+
+With no arguments at all, run `status`.
+
+If that path does not exist, the session-start hook has not run yet — the plugin was installed
+during this session. Say so and tell them to restart Claude Code; do not go looking for the engine
+somewhere else.
+
+Show the user what it printed. Then, if a session just started or resumed, run it the way the rest
+of this file describes, for the rest of the conversation.
 
 ## The shape of a turn
 
@@ -32,8 +59,7 @@ much of it arrives at once.
 
 ## Recording what happens
 
-Call the engine through Bash. The launcher lives at a fixed path, written by the session-start
-hook:
+Call the engine through Bash, at the same launcher path as above:
 
 ```bash
 ADHD="${XDG_STATE_HOME:-$HOME/.local/state}/claude-adhd/adhd"

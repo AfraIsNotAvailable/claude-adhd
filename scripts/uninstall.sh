@@ -41,7 +41,7 @@ else
 fi
 
 step "Symlinks"
-for dest in "${CLAUDE_DIR}/skills/adhd-session" "${CLAUDE_DIR}/commands/adhd.md"; do
+for dest in "${CLAUDE_DIR}/skills/adhd"; do
 	if [[ -L "${dest}" ]]; then
 		target="$(readlink -f "${dest}" || true)"
 		case "${target}" in

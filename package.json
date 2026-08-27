@@ -19,5 +19,5 @@
 		"install-skill": "bash scripts/install.sh --skill",
 		"uninstall": "bash scripts/uninstall.sh"
 	},
-	"files": ["bin", "lib", "commands", "skills", "scripts", "install.sh", ".claude-plugin"]
+	"files": ["bin", "lib", "skills", "scripts", "install.sh", ".claude-plugin"]
 }
